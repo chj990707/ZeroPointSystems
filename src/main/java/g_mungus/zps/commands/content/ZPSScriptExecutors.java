@@ -4,15 +4,12 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import g_mungus.zps.ZPSMod;
 import g_mungus.zps.blockentity.RoboticArmBlockEntity;
+import g_mungus.zps.blockentity.light_pipe.SerialBusBlockEntity;
 import g_mungus.zps.commands.api.RegisterScriptCommandsEvent;
 import g_mungus.zps.commands.api.ScriptExecutor;
-import g_mungus.zps.commands.content.executors.AssemblerRecipeCommand;
-import g_mungus.zps.commands.content.executors.RoboticArmItemCommand;
+import g_mungus.zps.commands.content.executors.*;
 import g_mungus.zps.commands.content.arguments.AssemblerRecipeArgument;
 import g_mungus.zps.blockentity.light_pipe.RadioBlockEntity;
-import g_mungus.zps.commands.content.executors.SetFrequencyCommand;
-import g_mungus.zps.commands.content.executors.SetRedstoneCommand;
-import g_mungus.zps.commands.content.executors.SetPageCommand;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Coordinates;
 import net.minecraft.core.BlockPos;
@@ -37,6 +34,21 @@ public class ZPSScriptExecutors {
                             context.commandSource().getLevel(),
                             context.pos(),
                             power
+                    );
+                    return 1;
+                }
+        ));
+
+        event.register(ScriptExecutor.simple(
+                "respond",
+                String.class,
+                ResourceLocation.parse("zps:string"),
+                StringArgumentType.string(),
+                (string, context) -> {
+                    SerialBusBlockEntity.respond(
+                            context.commandSource().getLevel(),
+                            BlockPos.containing(context.commandSource().getPosition()),
+                            string
                     );
                     return 1;
                 }

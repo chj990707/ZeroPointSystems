@@ -60,6 +60,7 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
     private static final String LAST_FAILURE_TAG = "LastFailure";
     private static final String EXPRESSION_TAG = "Expression";
     private static final String SENT_VALUE_TAG = "SentValue";
+    private static final String SCHDULED_VALUE_TAG = "ScheduledValue";
 
     /** How often a bus in GET mode reads the block it faces. */
     private static final int TICK_INTERVAL = 4;
@@ -84,8 +85,12 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
     private String expression = "";
     /** The last value put on the pipe. Kept across a reload so downstream displays survive one. */
     private String sentValue = "";
+    /** The value that will be sent as response to the 'respond' command. */
+    private String waitingResponse = "";
+    /** A timestamp to prevent same-tick responding */
+    private int queryTickCount = 0;
 
-    private int tickCounter;
+    private int tickCounter = 0;
     /** Guards against a network that leads back here pushing us into our own updateSignal. */
     private boolean updating;
 
@@ -183,14 +188,22 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
 
     /** Server side, from the block's ticker. Only a bus in GET mode has anything to do. */
     public void tick() {
-        if (mode != SerialBusMode.GET || !(level instanceof ServerLevel serverLevel)) {
+        if(!(level instanceof ServerLevel serverLevel)) {
             return;
         }
-        if (++tickCounter < TICK_INTERVAL) {
-            return;
+        if (mode != SerialBusMode.GET) {
+            if (!waitingResponse.isBlank()) {
+                if (tickCounter != queryTickCount) {
+                    send(serverLevel, waitingResponse);
+                    waitingResponse = "";
+                }
+            } else {
+                clearSentValue();
+            }
+        } else if (tickCounter == 0) {
+            evaluateAndPush(serverLevel);
         }
-        tickCounter = 0;
-        evaluateAndPush(serverLevel);
+        tickCounter = (tickCounter + 1) % TICK_INTERVAL;
     }
 
     /**
@@ -258,11 +271,6 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
 
     @Override
     public String provideNextDisplayText(int length) {
-        if (mode != SerialBusMode.GET) {
-            // Blank senders do not count towards a network's signal, so a bus that is executing
-            // stays invisible to everything else on the pipe, exactly as it was before GET existed.
-            return "";
-        }
         return sentValue.substring(0, Math.min(sentValue.length(), length));
     }
 
@@ -359,6 +367,7 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
         // The record describes what the old mode was doing, and the counter belongs to a run that
         // is over. Leaving GET also takes the bus's value off the pipe, so displays do not sit on
         // a reading that nothing is refreshing any more.
+        waitingResponse = "";
         lastCommand = "";
         lastOutcome = Outcome.NONE;
         lastFailure = null;
@@ -377,6 +386,7 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
         }
         expression = newExpression;
         // The old verdict was about the old text.
+        waitingResponse = "";
         lastCommand = "";
         lastOutcome = Outcome.NONE;
         lastFailure = null;
@@ -476,6 +486,7 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
         tag.putString(LAST_OUTCOME_TAG, lastOutcome.name());
         tag.putString(EXPRESSION_TAG, expression);
         tag.putString(SENT_VALUE_TAG, sentValue);
+        tag.putString(SCHDULED_VALUE_TAG, waitingResponse);
         if (lastFailure != null) {
             tag.put(LAST_FAILURE_TAG, lastFailure.save(new CompoundTag()));
         }
@@ -486,6 +497,7 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
         lastCommand = tag.getString(LAST_COMMAND_TAG);
         expression = tag.getString(EXPRESSION_TAG);
         sentValue = tag.getString(SENT_VALUE_TAG);
+        waitingResponse = tag.getString(SCHDULED_VALUE_TAG);
         lastOutcome = Outcome.NONE;
         try {
             if (tag.contains(LAST_OUTCOME_TAG, Tag.TAG_STRING)) {
@@ -522,5 +534,28 @@ public class SerialBusBlockEntity extends AbstractTextDataReceiver implements Li
     @Override
     public void handleUpdateTag(@NotNull CompoundTag tag, HolderLookup.@NotNull Provider registries) {
         loadRecord(tag);
+    }
+
+    /** This was the least invasive way to implement a command that can make Serial bus available to 'respond'. -Bunting_chj
+     *
+     */
+    public static void respond(ServerLevel level, BlockPos pos, String message) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity instanceof SerialBusBlockEntity serialBus) {
+            String value = "";
+            String chain = message.strip();
+            if (chain.isEmpty()) {
+                return;
+            }
+            try {
+                value = serialBus.evaluateAsText(level, chain);
+            } catch (Exception e) {
+                serialBus.recordOutcome(chain, ScriptCommandFailure.describe(e, chain, chain));
+                return;
+            }
+            serialBus.recordOutcome(chain, null);
+            serialBus.waitingResponse = value;
+            serialBus.queryTickCount = serialBus.tickCounter;
+        }
     }
 }

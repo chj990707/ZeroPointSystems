@@ -44,7 +44,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements LightPipeDataSender, ScriptComputer, Clearable {
+public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements LightPipeDataSender, LightPipeDataReceiver.Text, ScriptComputer, Clearable {
     private ItemStack addressPad = ItemStack.EMPTY;
     private final Container addressPadAccess = new Container() {
         @Override
@@ -140,6 +140,16 @@ public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements Li
         return addressPadAccess;
     }
 
+
+    public String getRegister() { return register; }
+
+    @Override
+    public void acceptText(int channel, String message) {
+        if(message.isBlank()) return;
+        register = message;
+    }
+
+    private String register = "";
     private String allCommands = "";
     private String currentCommand = "";
     private boolean loop = false;
@@ -385,6 +395,7 @@ public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements Li
     @Override
     protected void saveAdditional(net.minecraft.nbt.@NotNull CompoundTag tag, net.minecraft.core.HolderLookup.@NotNull Provider registries) {
         super.saveAdditional(tag, registries);
+        tag.putString("Register", register);
         tag.putString("AllCommands", allCommands);
         tag.putBoolean("Loop", loop);
         tag.putInt("Delay", delay);
@@ -407,6 +418,7 @@ public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements Li
     @Override
     protected void loadAdditional(net.minecraft.nbt.@NotNull CompoundTag tag, net.minecraft.core.HolderLookup.@NotNull Provider registries) {
         super.loadAdditional(tag, registries);
+        register = tag.getString("Register");
         allCommands = tag.getString("AllCommands");
         clearParsedScriptCache();
         loop = tag.getBoolean("Loop");
@@ -422,6 +434,7 @@ public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements Li
     @Override
     public net.minecraft.nbt.@NotNull CompoundTag getUpdateTag(net.minecraft.core.HolderLookup.@NotNull Provider registries) {
         net.minecraft.nbt.CompoundTag tag = super.getUpdateTag(registries);
+        tag.putString("Register", register);
         tag.putString("AllCommands", allCommands);
         tag.putBoolean("Loop", loop);
         tag.putInt("Delay", delay);
@@ -447,6 +460,7 @@ public class ScriptTerminalBlockEntity extends NetworkTerminalImpl implements Li
 
     @Override
     public void handleUpdateTag(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {
+        register = tag.getString("Register");
         allCommands = tag.getString("AllCommands");
         clearParsedScriptCache();
         loop = tag.getBoolean("Loop");
